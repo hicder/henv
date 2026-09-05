@@ -56,7 +56,17 @@ Set a variable in `.envrc`:
 henv env FOO bar
 ```
 
-That writes `export FOO=bar`. If the variable is already exported, the existing line is replaced.
+That writes `export FOO=bar`. If the variable is already exported, the existing line is replaced. After any change to `.envrc`, `direnv allow` is run if `direnv` is on `PATH`.
+
+### `henv unenv`
+
+Remove a variable from `.envrc`:
+
+```bash
+henv unenv FOO
+```
+
+That deletes the `export FOO=...` line. If `.envrc` changed, `direnv allow` is run if `direnv` is on `PATH`.
 
 ## Layout
 

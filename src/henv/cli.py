@@ -37,6 +37,12 @@ def main(argv: list[str] | None = None) -> int:
     env_parser.add_argument("name", help="Variable name (e.g. FOO)")
     env_parser.add_argument("value", help="Variable value (e.g. bar)")
 
+    unenv_parser = subparsers.add_parser(
+        "unenv",
+        help="Remove an export from .envrc",
+    )
+    unenv_parser.add_argument("name", help="Variable name (e.g. FOO)")
+
     args = parser.parse_args(argv)
 
     if args.command == "init":
@@ -45,6 +51,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_bin(args.name, args.target)
     if args.command == "env":
         return cmd_env(args.name, args.value)
+    if args.command == "unenv":
+        return cmd_unenv(args.name)
     parser.error(f"unknown command: {args.command}")
     return 2
 
@@ -61,13 +69,7 @@ def cmd_init() -> int:
         return 0
 
     ensure_envrc(Path.cwd() / ENVRC_PATH)
-
-    result = subprocess.run([direnv, "allow"], cwd=Path.cwd())
-    if result.returncode != 0:
-        print("direnv allow failed", file=sys.stderr)
-        return result.returncode
-    print("direnv allow")
-    return 0
+    return direnv_allow()
 
 
 def cmd_bin(name: str, target: str) -> int:
@@ -111,7 +113,7 @@ def cmd_env(name: str, value: str) -> int:
     if not envrc.exists():
         envrc.write_text(f"{new_line}\n")
         print(f"created {envrc}")
-        return 0
+        return direnv_allow()
 
     lines = envrc.read_text().splitlines()
     found = False
@@ -138,6 +140,42 @@ def cmd_env(name: str, value: str) -> int:
 
     envrc.write_text("\n".join(new_lines) + "\n")
     print(f"updated {envrc}")
+    return direnv_allow()
+
+
+def cmd_unenv(name: str) -> int:
+    if not ENV_NAME_RE.match(name):
+        print(f"invalid variable name: {name}", file=sys.stderr)
+        return 1
+
+    envrc = Path.cwd() / ENVRC_PATH
+    if not envrc.exists():
+        print(f"missing {envrc}")
+        return 0
+
+    prefix = f"export {name}="
+    lines = envrc.read_text().splitlines()
+    new_lines = [line for line in lines if not line.strip().startswith(prefix)]
+    if len(new_lines) == len(lines):
+        print(f"missing {name} in {envrc}")
+        return 0
+
+    envrc.write_text("\n".join(new_lines) + "\n" if new_lines else "")
+    print(f"updated {envrc}")
+    return direnv_allow()
+
+
+def direnv_allow() -> int:
+    direnv = shutil.which("direnv")
+    if direnv is None:
+        print("direnv not found; skipped direnv allow")
+        return 0
+
+    result = subprocess.run([direnv, "allow"], cwd=Path.cwd())
+    if result.returncode != 0:
+        print("direnv allow failed", file=sys.stderr)
+        return result.returncode
+    print("direnv allow")
     return 0
 
 
