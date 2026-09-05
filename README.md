@@ -54,9 +54,10 @@ Set a variable in `.envrc`:
 
 ```bash
 henv env FOO bar
+henv env CMAKE_EXTRA_ARGS '-DCMAKE_OSX_SYSROOT=$SDKROOT'
 ```
 
-That writes `export FOO=bar`. If the variable is already exported, the existing line is replaced. After any change to `.envrc`, `direnv allow` is run if `direnv` is on `PATH`.
+That writes `export FOO=bar`. Values may start with `-`. Use single quotes if the value should keep `$VARS` for direnv to expand later. If the variable is already exported, the existing line is replaced. After any change to `.envrc`, `direnv allow` is run if `direnv` is on `PATH`.
 
 ### `henv unenv`
 

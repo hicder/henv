@@ -35,7 +35,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Append or update an export in .envrc",
     )
     env_parser.add_argument("name", help="Variable name (e.g. FOO)")
-    env_parser.add_argument("value", help="Variable value (e.g. bar)")
+    env_parser.add_argument(
+        "value",
+        nargs=argparse.REMAINDER,
+        help="Variable value (e.g. bar). May start with -.",
+    )
 
     unenv_parser = subparsers.add_parser(
         "unenv",
@@ -50,7 +54,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "bin":
         return cmd_bin(args.name, args.target)
     if args.command == "env":
-        return cmd_env(args.name, args.value)
+        value_parts = list(args.value)
+        if value_parts[:1] == ["--"]:
+            value_parts = value_parts[1:]
+        if not value_parts:
+            env_parser.error("the following arguments are required: value")
+        return cmd_env(args.name, " ".join(value_parts))
     if args.command == "unenv":
         return cmd_unenv(args.name)
     parser.error(f"unknown command: {args.command}")
