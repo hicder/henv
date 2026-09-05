@@ -48,6 +48,16 @@ That makes `.hicder/bin/clang` point at the given binary. An existing symlink wi
 
 After `init`, direnv adds `.hicder/bin` to `PATH`, so `clang` in this directory resolves to the linked tool.
 
+### `henv env`
+
+Set a variable in `.envrc`:
+
+```bash
+henv env FOO bar
+```
+
+That writes `export FOO=bar`. If the variable is already exported, the existing line is replaced.
+
 ## Layout
 
 ```

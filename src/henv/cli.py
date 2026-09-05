@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -10,6 +11,7 @@ from pathlib import Path
 HICDER_BIN = Path(".hicder") / "bin"
 ENVRC_PATH = Path(".envrc")
 ENVRC_PATH_ADD = "PATH_add .hicder/bin"
+ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -28,12 +30,21 @@ def main(argv: list[str] | None = None) -> int:
     bin_parser.add_argument("name", help="Name of the symlink (e.g. clang)")
     bin_parser.add_argument("target", help="Path to the real binary")
 
+    env_parser = subparsers.add_parser(
+        "env",
+        help="Append or update an export in .envrc",
+    )
+    env_parser.add_argument("name", help="Variable name (e.g. FOO)")
+    env_parser.add_argument("value", help="Variable value (e.g. bar)")
+
     args = parser.parse_args(argv)
 
     if args.command == "init":
         return cmd_init()
     if args.command == "bin":
         return cmd_bin(args.name, args.target)
+    if args.command == "env":
+        return cmd_env(args.name, args.value)
     parser.error(f"unknown command: {args.command}")
     return 2
 
@@ -85,6 +96,48 @@ def cmd_bin(name: str, target: str) -> int:
 
     link_path.symlink_to(target_path)
     print(f"{link_path} -> {target_path}")
+    return 0
+
+
+def cmd_env(name: str, value: str) -> int:
+    if not ENV_NAME_RE.match(name):
+        print(f"invalid variable name: {name}", file=sys.stderr)
+        return 1
+
+    envrc = Path.cwd() / ENVRC_PATH
+    new_line = f"export {name}={value}"
+    prefix = f"export {name}="
+
+    if not envrc.exists():
+        envrc.write_text(f"{new_line}\n")
+        print(f"created {envrc}")
+        return 0
+
+    lines = envrc.read_text().splitlines()
+    found = False
+    changed = False
+    new_lines: list[str] = []
+    for line in lines:
+        if line.strip().startswith(prefix):
+            if not found:
+                new_lines.append(new_line)
+                found = True
+                changed = line.strip() != new_line
+            else:
+                changed = True
+        else:
+            new_lines.append(line)
+
+    if not found:
+        new_lines.append(new_line)
+        changed = True
+
+    if not changed:
+        print(f"exists {envrc}")
+        return 0
+
+    envrc.write_text("\n".join(new_lines) + "\n")
+    print(f"updated {envrc}")
     return 0
 
 
