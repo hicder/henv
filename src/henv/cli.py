@@ -134,12 +134,15 @@ def cmd_compiler(compiler_type: str, version: str) -> int:
         print(f"compiler not found: {bin_dir}", file=sys.stderr)
         return 1
 
-    for name in COMPILER_TOOLS[compiler_type]:
+    for name, alias in zip(COMPILER_TOOLS[compiler_type], ("cc", "c++")):
         target = _compiler_bin(bin_dir, name, version)
         if target is None:
             print(f"missing {name} in {bin_dir}", file=sys.stderr)
             return 1
         rc = cmd_bin(name, str(target))
+        if rc != 0:
+            return rc
+        rc = cmd_bin(alias, str(target))
         if rc != 0:
             return rc
 
