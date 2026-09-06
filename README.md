@@ -28,13 +28,13 @@ henv init
 
 This will:
 
-- Create `.hicder/bin` if it does not exist
+- Create `.hicder/bin` and `.hicder/include` if they do not exist
 - If `direnv` is on `PATH`:
   - Create `.envrc` if it does not exist, with `PATH_add .hicder/bin` as the first line
   - Prepend that line if `.envrc` already exists and does not start with it
   - Run `direnv allow`
 
-If `direnv` is not installed, `.hicder/bin` is still created and `.envrc` is skipped.
+If `direnv` is not installed, `.hicder/bin` and `.hicder/include` are still created and `.envrc` is skipped.
 
 ### `henv bin`
 
@@ -47,6 +47,23 @@ henv bin clang /opt/homebrew/opt/llvm@17/bin/clang
 That makes `.hicder/bin/clang` point at the given binary. An existing symlink with the same name is replaced.
 
 After `init`, direnv adds `.hicder/bin` to `PATH`, so `clang` in this directory resolves to the linked tool.
+
+### `henv compiler`
+
+Link a Homebrew compiler into `.hicder`:
+
+```bash
+henv compiler llvm 17
+henv compiler gcc 14
+```
+
+That looks under `/opt/homebrew/opt/<type>@<version>/` and creates:
+
+- For `llvm`: `.hicder/bin/clang` and `.hicder/bin/clang++`, plus `export CC=clang` and `export CXX=clang++` in `.envrc`
+- For `gcc`: `.hicder/bin/gcc` and `.hicder/bin/g++` (Homebrew's versioned `gcc-14` / `g++-14` names are used as the targets), plus `export CC=gcc` and `export CXX=g++` in `.envrc`
+- `.hicder/include/c++` pointing at the formula's `include/c++`
+
+Existing symlinks with the same names are replaced. If `.envrc` already exports `CC` or `CXX`, those lines are updated. After any change to `.envrc`, `direnv allow` is run if `direnv` is on `PATH`.
 
 ### `henv env`
 
@@ -75,6 +92,8 @@ That deletes the `export FOO=...` line. If `.envrc` changed, `direnv allow` is r
 .
 ├── .envrc          # PATH_add .hicder/bin
 └── .hicder/
-    └── bin/
-        └── clang   # symlink to the real binary
+    ├── bin/
+    │   └── clang   # symlink to the real binary
+    └── include/
+        └── c++     # symlink to the compiler C++ headers
 ```

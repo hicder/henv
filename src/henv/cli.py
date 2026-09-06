@@ -9,9 +9,15 @@ import sys
 from pathlib import Path
 
 HICDER_BIN = Path(".hicder") / "bin"
+HICDER_INCLUDE = Path(".hicder") / "include"
+HOMEBREW_OPT = Path("/opt/homebrew/opt")
 ENVRC_PATH = Path(".envrc")
 ENVRC_PATH_ADD = "PATH_add .hicder/bin"
 ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+COMPILER_TOOLS = {
+    "llvm": ("clang", "clang++"),
+    "gcc": ("gcc", "g++"),
+}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -21,7 +27,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("init", help="Create .hicder/bin and set up direnv if available")
+    subparsers.add_parser(
+        "init",
+        help="Create .hicder/bin and .hicder/include, and set up direnv if available",
+    )
 
     bin_parser = subparsers.add_parser(
         "bin",
@@ -47,12 +56,26 @@ def main(argv: list[str] | None = None) -> int:
     )
     unenv_parser.add_argument("name", help="Variable name (e.g. FOO)")
 
+    compiler_parser = subparsers.add_parser(
+        "compiler",
+        help="Link a Homebrew compiler into .hicder",
+    )
+    compiler_parser.add_argument(
+        "compiler_type",
+        metavar="type",
+        choices=tuple(COMPILER_TOOLS),
+        help="Compiler family",
+    )
+    compiler_parser.add_argument("version", help="Homebrew formula version (e.g. 17)")
+
     args = parser.parse_args(argv)
 
     if args.command == "init":
         return cmd_init()
     if args.command == "bin":
         return cmd_bin(args.name, args.target)
+    if args.command == "compiler":
+        return cmd_compiler(args.compiler_type, args.version)
     if args.command == "env":
         value_parts = list(args.value)
         if value_parts[:1] == ["--"]:
@@ -67,10 +90,11 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def cmd_init() -> int:
-    bin_dir = Path.cwd() / HICDER_BIN
-    created = not bin_dir.exists()
-    bin_dir.mkdir(parents=True, exist_ok=True)
-    print(f"created {bin_dir}" if created else f"exists {bin_dir}")
+    for relative in (HICDER_BIN, HICDER_INCLUDE):
+        path = Path.cwd() / relative
+        created = not path.exists()
+        path.mkdir(parents=True, exist_ok=True)
+        print(f"created {path}" if created else f"exists {path}")
 
     direnv = shutil.which("direnv")
     if direnv is None:
@@ -82,7 +106,7 @@ def cmd_init() -> int:
 
 
 def cmd_bin(name: str, target: str) -> int:
-    if not name or name in {".", ".."} or "/" in name or os.sep in name:
+    if not _valid_link_name(name):
         print(f"invalid symlink name: {name}", file=sys.stderr)
         return 1
 
@@ -96,8 +120,59 @@ def cmd_bin(name: str, target: str) -> int:
 
     bin_dir = Path.cwd() / HICDER_BIN
     bin_dir.mkdir(parents=True, exist_ok=True)
-    link_path = bin_dir / name
+    return _symlink(bin_dir / name, target_path)
 
+
+def cmd_compiler(compiler_type: str, version: str) -> int:
+    if not version or "/" in version or ".." in version or os.sep in version:
+        print(f"invalid version: {version}", file=sys.stderr)
+        return 1
+
+    prefix = HOMEBREW_OPT / f"{compiler_type}@{version}"
+    bin_dir = prefix / "bin"
+    if not bin_dir.is_dir():
+        print(f"compiler not found: {bin_dir}", file=sys.stderr)
+        return 1
+
+    for name in COMPILER_TOOLS[compiler_type]:
+        target = _compiler_bin(bin_dir, name, version)
+        if target is None:
+            print(f"missing {name} in {bin_dir}", file=sys.stderr)
+            return 1
+        rc = cmd_bin(name, str(target))
+        if rc != 0:
+            return rc
+
+    include_cxx = prefix / "include" / "c++"
+    if not include_cxx.exists():
+        print(f"include not found: {include_cxx}", file=sys.stderr)
+        return 1
+
+    include_dir = Path.cwd() / HICDER_INCLUDE
+    include_dir.mkdir(parents=True, exist_ok=True)
+    rc = _symlink(include_dir / "c++", include_cxx)
+    if rc != 0:
+        return rc
+
+    cc, cxx = COMPILER_TOOLS[compiler_type]
+    rc = cmd_env("CC", cc)
+    if rc != 0:
+        return rc
+    return cmd_env("CXX", cxx)
+
+
+def _valid_link_name(name: str) -> bool:
+    return bool(name) and name not in {".", ".."} and "/" not in name and os.sep not in name
+
+
+def _compiler_bin(bin_dir: Path, name: str, version: str) -> Path | None:
+    for candidate in (bin_dir / name, bin_dir / f"{name}-{version}"):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _symlink(link_path: Path, target_path: Path) -> int:
     if link_path.exists() or link_path.is_symlink():
         if link_path.is_symlink():
             link_path.unlink()
